@@ -170,19 +170,34 @@ def queue_detail(service_id: int, session: Session = Depends(get_session)):
     if not service:
         raise HTTPException(404, "Service not found")
 
-    waiting_tickets = session.exec(
-        select(Ticket).where(
-            Ticket.service_id == service_id,
-            Ticket.called == False
-        ).order_by(Ticket.created_at)
+    # called==Trueも含めて、全チケットを古い順で返す
+    all_tickets = session.exec(
+        select(Ticket)
+        .where(Ticket.service_id == service_id)
+        .order_by(Ticket.created_at)
     ).all()
 
+    waiting = len([t for t in all_tickets if not t.called])
+
+    read_list = [
+        _ticket_to_read(t, position=(i + 1) if not t.called else 0)
+        for i, t in enumerate([t for t in all_tickets if not t.called])
+    ]
+    # 全チケット分を返す
+    tickets_list = []
+    idx = 1
+    for t in all_tickets:
+        pos = idx if not t.called else 0
+        if not t.called:
+            idx += 1
+        tickets_list.append(_ticket_to_read(t, position=pos))
     return QueueRead(
         service_id=service.id,
         service_name=service.name,
-        waiting=len(waiting_tickets),
-        tickets=[_ticket_to_read(t, i + 1) for i, t in enumerate(waiting_tickets)]
+        waiting=waiting,
+        tickets=tickets_list
     )
+
 
 # ───────────────────────────────────────────────
 # 次の人を呼ぶ
